@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Vespa Application Package Configuration (services.xml)
+  Defines the Container Cluster, Content Cluster (Proton Storage & Distributors), and Config Control Plane.
+-->
+<services version="1.0">
+
+  <!-- Container Cluster: Application logic, HTTP REST Document API, Search & DocProc chains -->
+  <container id="default" version="1.0">
+    <document-api />
+    <search>
+      <chain id="default" inherits="vespa" />
+    </search>
+    <nodes>
+      <node hostalias="node1" />
+    </nodes>
+  </container>
+
+  <!-- Content Cluster: Proton C++ Engine (Inverted Index, HNSW Vector Index, Multi-Phase Ranking) -->
+  <content id="content" version="1.0">
+    <redundancy>1</redundancy>
+    <documents>
+      <document type="article" mode="index" />
+      <document type="item" mode="index" />
+    </documents>
+    <nodes>
+      <node hostalias="node1" distribution-key="0" />
+    </nodes>
+    <engine>
+      <proton>
+        <tuning>
+          <search>
+            <memory>
+              <query-timeout>5.0</query-timeout>
+            </memory>
+          </search>
+        </tuning>
+      </proton>
+    </engine>
+  </content>
+
+  <!-- Management & Control Plane: Config Server and Cluster Controller -->
+  <admin version="2.0">
+    <adminserver hostalias="node1" />
+    <configservers>
+      <configserver hostalias="node1" />
+    </configservers>
+    <cluster-controllers>
+      <cluster-controller hostalias="node1" />
+    </cluster-controllers>
+  </admin>
+
+</services>

@@ -1,0 +1,76 @@
+# Vespa Schema Definition for High-Performance Search and Multi-Phase Ranking
+schema article {
+
+    document article {
+        # Unique Document Identifier
+        field id type string {
+            indexing: summary | attribute
+        }
+
+        # Document Title with BM25 Inverted Index
+        field title type string {
+            indexing: summary | index
+            index: enable-bm25
+        }
+
+        # Document Body text with BM25 Inverted Index
+        field body type string {
+            indexing: summary | index
+            index: enable-bm25
+        }
+
+        # Category attribute for structured fast filtering
+        field category type string {
+            indexing: summary | attribute
+        }
+
+        # Dense Vector Embedding for HNSW Approximate Nearest Neighbor (ANN) Search
+        field embedding type tensor<float>(x[384]) {
+            indexing: summary | attribute | index
+            index {
+                distance-metric: angular
+            }
+        }
+
+        # Numerical popularity score for re-ranking boosting
+        field popularity type float {
+            indexing: summary | attribute
+        }
+
+        # UNIX Timestamp (seconds)
+        field timestamp type long {
+            indexing: summary | attribute
+        }
+    }
+
+    # Default search field set
+    fieldset default {
+        fields: title, body
+    }
+
+    # Baseline Lexical Rank Profile
+    rank-profile default {
+        first-phase {
+            expression: bm25(title) + bm25(body)
+        }
+    }
+
+    # Enterprise Hybrid Multi-Phase Rank Profile (Lexical + Vector HNSW + ML Rescoring)
+    rank-profile hybrid-multi-phase {
+        inputs {
+            query(q_embedding) tensor<float>(x[384])
+        }
+
+        # First Phase: Fast low-cost heuristic evaluation
+        first-phase {
+            expression: bm25(title) * 0.4 + bm25(body) * 0.3 + closeness(field, embedding) * 0.3
+        }
+
+        # Second Phase: Heavyweight re-ranking applied to the top candidate set
+        second-phase {
+            expression: firstPhase + attribute(popularity) * 0.1
+        }
+
+        rerank-count: 100
+    }
+}

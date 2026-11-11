@@ -1,0 +1,21 @@
+schema item {
+    document item {
+        field id type string {
+            indexing: summary | attribute
+        }
+        field title type string {
+            indexing: summary | index
+            bolding: on
+        }
+        field embedding type tensor<float>(x[384]) {
+            indexing: summary | attribute
+            attribute {
+                distance-metric: euclidean
+            }
+        }
+    }
+
+    fieldset default {
+        fields: title
+    }
+}

@@ -1,0 +1,81 @@
+services:
+  # Vespa Engine: Unified Container, Content, and Config Server node
+  vespa-node:
+    image: vespaengine/vespa:8
+    container_name: vespa-search-node
+    hostname: vespa-node
+    ports:
+      - "8080:8080"   # Container Cluster HTTP Query & Write API
+      - "19071:19071" # Config Server Management API
+      - "19092:19092" # Vespa Admin Console
+    volumes:
+      - ./app:/app
+    environment:
+      VESPA_CONFIGSERVERS: vespa-node
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:19071/state/v1/health | grep -q 'up' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ZooKeeper Coordination Service for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: vespa-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  # Apache Kafka Message Broker for Event Sync Pipeline
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: vespa-kafka-broker
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # Golang Microservice Orchestrator API
+  go-orchestrator:
+    image: golang:1.24-alpine
+    container_name: vespa-go-orchestrator
+    depends_on:
+      vespa-node:
+        condition: service_healthy
+    working_dir: /go/src/app
+    volumes:
+      - ./go-orchestrator:/go/src/app
+    ports:
+      - "8090:8090"
+    environment:
+      VESPA_URL: "http://vespa-node:8080"
+      PORT: "8090"
+    command: sh -c "go run main.go client.go"
+
+  # Kafka Feeder Sync Service
+  kafka-feeder:
+    image: python:3.11-slim
+    container_name: vespa-kafka-feeder
+    depends_on:
+      vespa-node:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    working_dir: /app
+    volumes:
+      - ./kafka-feeder:/app
+    environment:
+      VESPA_URL: "http://vespa-node:8080"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_TOPIC: "vespa-article-events"
+    command: python3 feeder.py
